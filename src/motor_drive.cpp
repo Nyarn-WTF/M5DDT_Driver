@@ -28,6 +28,42 @@ motor_drive::motor_drive(drive_mode_e mode, uint8_t feedback_polling) {
     CAN0.sendMsgBuf(0x106, 0, 8, feedback_stmp);
     delay(10);
 
+    xTaskCreate(
+        [](void *this_pointer){
+            static_cast<motor_drive *>(this_pointer)->feedback_task();
+        },
+        "Feedback task",
+        1000,
+        this,
+        1,
+        nullptr
+    );
+}
+
+[[noreturn]] void motor_drive::feedback_task() {
+    while(true){
+        byte left_wheel_byte[8] = {0}, right_wheel_byte[8] = {0};
+        byte size = 8;
+
+        CAN0.readMsgBuf(&this->left_motor_id, &size, left_wheel_byte);
+        CAN0.readMsgBuf(&this->right_motor_id, &size, right_wheel_byte);
+
+        parse_feedback(&this->left_wheel_feedback, left_wheel_byte);
+        parse_feedback(&this->right_wheel_feedback, right_wheel_byte);
+
+        Serial.printf("%x, %x, %x, %x\r\n", left_wheel_byte[0], left_wheel_byte[1], right_wheel_byte[0], right_wheel_byte[1]);
+        delay(10);
+    }
+}
+
+void motor_drive::parse_feedback(feedback_t *feedback, const byte data[8]){
+
+    feedback->velocity = (data[0] << 8) & (data[1] & 0x00FF);
+    feedback->current = (data[2] << 8) & (data[3] & 0x00FF);
+    feedback->angle = (data[4] << 8) & (data[5] & 0x00FF);
+    feedback->velocity = data[6];
+    feedback->velocity = data[7];
+
 }
 
 bool motor_drive::set_velocity(int16_t velo_left, int16_t velo_right){
@@ -95,11 +131,13 @@ bool motor_drive::set_angle(int16_t velo_left, int16_t velo_right){
 }
 
 feedback_t motor_drive::get_right_wheel_feedback(){
-
+    feedback_t feedback = this->right_wheel_feedback;
+    return feedback;
 }
 
 feedback_t motor_drive::get_left_wheel_feedback(){
-
+    feedback_t feedback = this->left_wheel_feedback;
+    return feedback;
 }
 
 bool motor_drive::drive(){

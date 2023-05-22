@@ -36,12 +36,15 @@ typedef struct {
 class motor_drive {
 private:
     drive_mode_e drive_mode = OPEN_LOOP;
-    uint8_t left_motor_id = 0x02;
-    uint8_t right_motor_id = 0x01;
+    unsigned long left_motor_id = 0x02 + 0x96;
+    unsigned long right_motor_id = 0x01 + 0x96;
 
     feedback_t right_wheel_feedback = {0}, left_wheel_feedback = {0};
 
     uint8_t cmd_stmp[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+    [[noreturn]] void feedback_task();
+    static void parse_feedback(feedback_t *feedback, const byte data[8]);
 
 public:
     motor_drive(drive_mode_e mode, uint8_t feedback_polling);

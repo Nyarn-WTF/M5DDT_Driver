@@ -23,11 +23,21 @@ void setup() {
 }
 
 void loop() {
-    static uint8_t velo = 0;
+    static int16_t velo = 0;
+    static bool toggle = false;
     motor->set_rpm_velocity(velo, velo);
     motor->drive();
     M5.update();
-    if(velo < 60)
-        velo ++;
+
+    if(!toggle) {
+        velo++;
+        if(velo > 20)
+            toggle = true;
+
+    }else{
+        velo--;
+        if(velo < -20)
+            toggle = false;
+    }
     delay(100);
 }
