@@ -1,8 +1,19 @@
+#include <Arduino.h>
 #include <M5Stack.h>
+#include <micro_ros_platformio.h>
 #include "motor_drive.h"
 #include "m5_logo.h"
+#include "Patlite.h"
+
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
 
 motor_drive *motor;
+Patlite *patlite;
+
+SET_LOOP_TASK_STACK_SIZE(16000);
 
 void setup() {
     M5.begin();
@@ -19,6 +30,7 @@ void setup() {
     M5.Lcd.setCursor(10, 10);
     delay(500);
 
+    patlite = new Patlite();
     motor = new motor_drive(VELOCITY_LOOP, 0x80);
 }
 
@@ -39,5 +51,9 @@ void loop() {
         if(velo < -20)
             toggle = false;
     }
+
+    patlite->set_green(toggle);
+    patlite->set_red(toggle);
+    patlite->set_yellow(toggle);
     delay(100);
 }

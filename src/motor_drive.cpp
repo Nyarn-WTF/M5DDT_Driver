@@ -33,7 +33,7 @@ motor_drive::motor_drive(drive_mode_e mode, uint8_t feedback_polling) {
             static_cast<motor_drive *>(this_pointer)->feedback_task();
         },
         "Feedback task",
-        1000,
+        4000,
         this,
         1,
         nullptr
@@ -51,7 +51,6 @@ motor_drive::motor_drive(drive_mode_e mode, uint8_t feedback_polling) {
         parse_feedback(&this->left_wheel_feedback, left_wheel_byte);
         parse_feedback(&this->right_wheel_feedback, right_wheel_byte);
 
-        Serial.printf("%x, %x, %x, %x\r\n", left_wheel_byte[0], left_wheel_byte[1], right_wheel_byte[0], right_wheel_byte[1]);
         delay(10);
     }
 }
