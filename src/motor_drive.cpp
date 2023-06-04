@@ -13,6 +13,14 @@ motor_drive::motor_drive(drive_mode_e mode, uint8_t feedback_polling) {
 
     drive_mode = mode;
 
+    if (CAN0.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == CAN_OK)
+        Serial.println("MCP2515 Initialized Successfully!");
+    else
+        Serial.println("Error Initializing MCP2515...");
+
+    CAN0.setMode(MCP_NORMAL);
+    pinMode(CAN0_INT, INPUT);
+
     //CAN 終端抵抗(0: OFF/ 1: ON)
     uint8_t resistor_stmp[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     CAN0.sendMsgBuf(0x109, 0, 8, resistor_stmp);
