@@ -1,14 +1,9 @@
 #include <Arduino.h>
 #include <M5Stack.h>
-#include <micro_ros_platformio.h>
 #include "motor_drive.h"
 #include "m5_logo.h"
 #include "Patlite.h"
-
-#include <rcl/rcl.h>
-#include <rcl/error_handling.h>
-#include <rclc/rclc.h>
-#include <rclc/executor.h>
+#include "ros2_node.h"
 
 motor_drive *motor;
 Patlite *patlite;
@@ -18,7 +13,8 @@ SET_LOOP_TASK_STACK_SIZE(16000);
 void setup() {
     M5.begin();
     M5.Power.begin();
-    Serial.begin(9600);
+    Serial.begin(115200);
+
     Serial2.begin(9600, SERIAL_8N1, 16, 17);
 
     M5.Lcd.pushImage(0, 0, 320, 240, (uint16_t *)gImage_logoM5);
@@ -55,5 +51,6 @@ void loop() {
     patlite->set_green(toggle);
     patlite->set_red(toggle);
     patlite->set_yellow(toggle);
+
     delay(100);
 }
