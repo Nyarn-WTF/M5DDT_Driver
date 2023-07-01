@@ -42,7 +42,7 @@ ros2_node::ros2_node(String node_name, String node_namespace, String feedback_pu
                 type_support, cmd_vel_subscriber_topic_name.c_str());
         rc = rclc_executor_add_subscription(
                 &executor, &cmd_vel_subscriber, &cmd_vel_msg,
-                &cmd_vel_subscriber, ON_NEW_DATA);
+                cmd_vel_callback, ON_NEW_DATA);
         if (RCL_RET_OK != rc) {
             while (true);
         }
@@ -57,7 +57,7 @@ ros2_node::ros2_node(String node_name, String node_namespace, String feedback_pu
                 type_support, patlite_subscriber_topic_name.c_str());
         rc = rclc_executor_add_subscription(
                 &executor, &patlite_subscriber, &patlite_msg,
-                &patlite_subscriber, ON_NEW_DATA);
+                patlite_callback, ON_NEW_DATA);
         if (RCL_RET_OK != rc) {
             while (true);
         }

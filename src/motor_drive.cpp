@@ -137,6 +137,18 @@ bool motor_drive::set_angle(int16_t velo_left, int16_t velo_right){
     return true;
 }
 
+void motor_drive::set_rightwheel_id(){
+    uint8_t id_stmp[8] = {(uint8_t)this->right_motor_id, 0, 0, 0, 0, 0, 0, 0};
+    CAN0.sendMsgBuf(0x108, 0, 8, id_stmp);
+    delay(10);
+}
+
+void motor_drive::set_leftwheel_id(){
+    uint8_t id_stmp[8] = {(uint8_t)this->left_motor_id, 0, 0, 0, 0, 0, 0, 0};
+    CAN0.sendMsgBuf(0x108, 0, 8, id_stmp);
+    delay(10);
+}
+
 feedback_t motor_drive::get_right_wheel_feedback(){
     feedback_t feedback = this->right_wheel_feedback;
     return feedback;

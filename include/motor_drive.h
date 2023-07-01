@@ -52,6 +52,8 @@ public:
     bool set_rpm_velocity(int16_t velo_left, int16_t velo_right);
     bool set_current(int16_t velo_left, int16_t velo_right);
     bool set_angle(int16_t velo_left, int16_t velo_right);
+    void set_rightwheel_id();
+    void set_leftwheel_id();
     feedback_t get_right_wheel_feedback();
     feedback_t get_left_wheel_feedback();
     bool drive();

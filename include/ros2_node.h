@@ -30,8 +30,8 @@ private:
 
     std_msgs__msg__Int32 cmd_vel_msg, patlite_msg;
 
-    void cmd_vel_callback(const void * msgin);
-    void patlite_callback(const void * msgin);
+    static void cmd_vel_callback(const void * msgin);
+    static void patlite_callback(const void * msgin);
 public:
     ros2_node(String node_name, String node_namespace, String feedback_publisher_topic_name, String cmd_vel_subscriber_topic_name, String patlite_subscriber_topic_name);
     ~ros2_node();
