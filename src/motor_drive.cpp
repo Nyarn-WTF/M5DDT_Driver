@@ -54,21 +54,37 @@ motor_drive::motor_drive(drive_mode_e mode, uint8_t feedback_polling) {
         byte size = 8;
         unsigned long id;
 
-        CAN0.readMsgBuf(&id, &size, buff);
+        byte can_status = CAN0.readMsgBuf(&id, &size, buff);
+        if(can_status == CAN_OK){
+            if(id == (this->left_motor_id + 0x96)){
+                parse_feedback(&this->left_wheel_feedback, buff);
+            }else if(id == (this->right_motor_id + 0x96)){
+                parse_feedback(&this->right_wheel_feedback, buff);
+            }
             
-        if(id == (this->left_motor_id + 0x96)){
-            parse_feedback(&this->left_wheel_feedback, buff);
-        }else if(id == (this->right_motor_id + 0x96)){
-            parse_feedback(&this->right_wheel_feedback, buff);
+            this->timeout_timer = 0;
+            this->timeout = false;
+        }else{
+            if(this->timeout_timer > 100){
+                this->timeout = true;
+                memset(&this->left_wheel_feedback, 0, sizeof(feedback_t));
+                memset(&this->right_wheel_feedback, 0, sizeof(feedback_t));
+            }else{
+                this->timeout_timer ++;
+            }
         }
         delay(1);
     }
 }
 
+bool motor_drive::get_timeout(){
+    return this->timeout;
+}
+
 void motor_drive::parse_feedback(feedback_t *feedback, const byte data[8]){
 
     feedback->velocity = (data[0] << 8) | data[1];
-    
+
     if(feedback->velocity > 210){
         feedback->velocity = 210;
     }

@@ -46,6 +46,9 @@ private:
     [[noreturn]] void feedback_task();
     static void parse_feedback(feedback_t *feedback, const byte data[8]);
 
+    bool timeout = false;
+    unsigned int timeout_timer = 0;
+
 public:
     motor_drive(drive_mode_e mode, uint8_t feedback_polling);
     bool set_velocity(int16_t velo_left, int16_t velo_right);
@@ -57,6 +60,7 @@ public:
     feedback_t get_right_wheel_feedback();
     feedback_t get_left_wheel_feedback();
     bool drive();
+    bool get_timeout();
 };
 
 

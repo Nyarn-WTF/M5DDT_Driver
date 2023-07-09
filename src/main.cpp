@@ -9,11 +9,12 @@ motor_drive *motor;
 Patlite *patlite;
 
 float dt = 0.01;
-float Kp = 40.0;
+float Kp = 20.0;
 float Ki = 1.0;
 float Kd = 0.2;
 
 int16_t pid_calc(int16_t befor_value, int16_t feedback_rpm, int16_t target_rpm, int16_t error[2]);
+void motor_control(void * pvParameters);
 
 SET_LOOP_TASK_STACK_SIZE(64000);
 
@@ -53,36 +54,54 @@ void setup() {
         delay(1000);
         M5.Power.reset();
     }
+
+    xTaskCreate(motor_control,  "motor control", 8192, nullptr, 1, nullptr);
 }
 
 void loop() {
-    static int16_t left_velo = 0, right_velo = 0, left_velo_ave = 0, right_velo_ave = 0;
-    static int8_t average_count = 0;
-    static int16_t left_err[2], right_err[2];
-
-    feedback_t left_feedback, right_feedback;
-
-    left_feedback = motor->get_left_wheel_feedback();
-    right_feedback = motor->get_right_wheel_feedback();
-
-    if(average_count >= 10){
-        left_velo = pid_calc(left_velo, left_feedback.velocity, 20, left_err);
-        right_velo = pid_calc(right_velo, right_feedback.velocity, -20, right_err);
-        average_count = 0;
-    }else{
-        left_velo_ave = (left_feedback.velocity + left_velo_ave) / 2;
-        right_velo_ave = (right_feedback.velocity + right_velo_ave) / 2;
-        average_count++;
-    }
-
-    motor->set_velocity(left_velo, right_velo);
-    motor->drive();
-
-
-    Serial.printf("%d, %d, %d, %d\r\n", left_feedback.velocity, right_feedback.velocity, left_velo, right_velo);
-
     M5.update();
     delay(1);
+}
+
+void motor_control(void * pvParameters){
+    int16_t left_velo = 0, right_velo = 0, left_velo_ave = 0, right_velo_ave = 0;
+    int8_t average_count = 0;
+    int16_t left_err[2] = {0}, right_err[2] = {0};
+    
+    while(true){
+        if(!motor->get_timeout()){
+            feedback_t left_feedback, right_feedback;
+
+            left_feedback = motor->get_left_wheel_feedback();
+            right_feedback = motor->get_right_wheel_feedback();
+
+            if(average_count >= 10){
+                left_velo = pid_calc(left_velo, left_feedback.velocity, 60, left_err);
+                right_velo = pid_calc(right_velo, right_feedback.velocity, -60, right_err);
+                Serial.printf("%d, %d, %d, %d\r\n", left_feedback.velocity, right_feedback.velocity, left_velo, right_velo);
+                average_count = 0;
+            }else{
+                left_velo_ave = (left_feedback.velocity + left_velo_ave) / 2;
+                right_velo_ave = (right_feedback.velocity + right_velo_ave) / 2;
+                average_count++;
+            }
+        }else{
+            left_velo = 0;
+            right_velo = 0;
+            left_velo_ave = 0;
+            right_velo_ave = 0;
+            average_count = 0;
+            left_err[0] = 0;
+            left_err[1] = 0;
+            right_err[0] = 0;
+            right_err[1] = 0;
+        }
+
+        motor->set_velocity(left_velo, right_velo);
+        motor->drive();
+
+        delay(1);
+    }
 }
 
 int16_t pid_calc(int16_t befor_value, int16_t feedback_rpm, int16_t target_rpm, int16_t error[2]){
