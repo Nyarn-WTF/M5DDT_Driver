@@ -8,6 +8,13 @@
 motor_drive *motor;
 Patlite *patlite;
 
+float dt = 0.01;
+float Kp = 40.0;
+float Ki = 1.0;
+float Kd = 0.2;
+
+int16_t pid_calc(int16_t befor_value, int16_t feedback_rpm, int16_t target_rpm, int16_t error[2]);
+
 SET_LOOP_TASK_STACK_SIZE(64000);
 
 void setup() {
@@ -30,7 +37,7 @@ void setup() {
     Serial.println("Patlite setup");
     patlite = new Patlite();
     Serial.println("Motor setup");
-    motor = new motor_drive(VELOCITY_LOOP, 0x80);
+    motor = new motor_drive(OPEN_LOOP, 0x02);
     Serial.println("setup finished");
 
     if(M5.BtnA.isPressed() && M5.BtnB.isPressed() && M5.BtnC.isReleased()){
@@ -49,9 +56,58 @@ void setup() {
 }
 
 void loop() {
-    static int16_t velo = 10;
-    motor->set_rpm_velocity(velo, velo);
+    static int16_t left_velo = 0, right_velo = 0, left_velo_ave = 0, right_velo_ave = 0;
+    static int8_t average_count = 0;
+    static int16_t left_err[2], right_err[2];
+
+    feedback_t left_feedback, right_feedback;
+
+    left_feedback = motor->get_left_wheel_feedback();
+    right_feedback = motor->get_right_wheel_feedback();
+
+    if(average_count >= 10){
+        left_velo = pid_calc(left_velo, left_feedback.velocity, 20, left_err);
+        right_velo = pid_calc(right_velo, right_feedback.velocity, -20, right_err);
+        average_count = 0;
+    }else{
+        left_velo_ave = (left_feedback.velocity + left_velo_ave) / 2;
+        right_velo_ave = (right_feedback.velocity + right_velo_ave) / 2;
+        average_count++;
+    }
+
+    motor->set_velocity(left_velo, right_velo);
     motor->drive();
+
+
+    Serial.printf("%d, %d, %d, %d\r\n", left_feedback.velocity, right_feedback.velocity, left_velo, right_velo);
+
     M5.update();
-    delay(10000);
+    delay(1);
+}
+
+int16_t pid_calc(int16_t befor_value, int16_t feedback_rpm, int16_t target_rpm, int16_t error[2]){
+    float p, i, d;
+    error[0] = error[1];
+    int32_t error_buf = target_rpm - feedback_rpm;
+
+    if(error_buf >  INT16_MAX - 1)
+        error_buf = INT16_MAX - 1;
+    else if(error_buf < INT16_MIN + 1)
+        error_buf = INT16_MIN + 1;
+        
+    error[1] = (int16_t)error_buf;
+
+    befor_value += (error[1] + error[0]) / 2.0 * dt;
+
+    p = Kp * error[1];
+    i = Ki * befor_value;
+    d = Kd * (error[1] - error[0])/dt;
+
+    int32_t rtn = (int32_t)(p + i + d);
+    if(rtn > INT16_MAX - 1)
+        rtn = INT16_MAX - 1;
+    else if(rtn < INT16_MIN + 1)
+        rtn = INT16_MIN + 1;
+
+    return (int16_t)rtn;
 }

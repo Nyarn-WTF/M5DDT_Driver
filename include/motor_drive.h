@@ -27,8 +27,8 @@ typedef enum {
 
 typedef struct {
     int16_t velocity;
-    int16_t current;
-    int16_t angle;
+    float current;
+    float angle;
     fault_value_e fault_value;
     drive_mode_e mode;
 }feedback_t;
@@ -36,8 +36,8 @@ typedef struct {
 class motor_drive {
 private:
     drive_mode_e drive_mode = OPEN_LOOP;
-    unsigned long left_motor_id = 0x02 + 0x96;
-    unsigned long right_motor_id = 0x01 + 0x96;
+    unsigned long left_motor_id = 0x02;
+    unsigned long right_motor_id = 0x01;
 
     feedback_t right_wheel_feedback = {0}, left_wheel_feedback = {0};
 

@@ -50,27 +50,37 @@ motor_drive::motor_drive(drive_mode_e mode, uint8_t feedback_polling) {
 
 [[noreturn]] void motor_drive::feedback_task() {
     while(true){
-        byte left_wheel_byte[8] = {0}, right_wheel_byte[8] = {0};
+        byte buff[8];
         byte size = 8;
+        unsigned long id;
 
-        CAN0.readMsgBuf(&this->left_motor_id, &size, left_wheel_byte);
-        CAN0.readMsgBuf(&this->right_motor_id, &size, right_wheel_byte);
-
-        parse_feedback(&this->left_wheel_feedback, left_wheel_byte);
-        parse_feedback(&this->right_wheel_feedback, right_wheel_byte);
-
-        delay(10);
+        CAN0.readMsgBuf(&id, &size, buff);
+            
+        if(id == (this->left_motor_id + 0x96)){
+            parse_feedback(&this->left_wheel_feedback, buff);
+        }else if(id == (this->right_motor_id + 0x96)){
+            parse_feedback(&this->right_wheel_feedback, buff);
+        }
+        delay(1);
     }
 }
 
 void motor_drive::parse_feedback(feedback_t *feedback, const byte data[8]){
 
-    feedback->velocity = (data[0] << 8) & (data[1] & 0x00FF);
-    feedback->current = (data[2] << 8) & (data[3] & 0x00FF);
-    feedback->angle = (data[4] << 8) & (data[5] & 0x00FF);
-    feedback->velocity = data[6];
-    feedback->velocity = data[7];
+    feedback->velocity = (data[0] << 8) | data[1];
+    
+    if(feedback->velocity > 210){
+        feedback->velocity = 210;
+    }
 
+    if(feedback->velocity < -210){
+        feedback->velocity = -210;
+    }
+
+    feedback->current = ((data[2] << 8) | data[3]) / 993;
+    feedback->angle = ((data[4] << 8) | data[5]) / 91;
+    feedback->fault_value = (fault_value_e)data[6];
+    feedback->mode = (drive_mode_e)data[7];
 }
 
 bool motor_drive::set_velocity(int16_t velo_left, int16_t velo_right){
@@ -138,15 +148,29 @@ bool motor_drive::set_angle(int16_t velo_left, int16_t velo_right){
 }
 
 void motor_drive::set_rightwheel_id(){
-    uint8_t id_stmp[8] = {(uint8_t)this->right_motor_id, 0, 0, 0, 0, 0, 0, 0};
-    CAN0.sendMsgBuf(0x108, 0, 8, id_stmp);
-    delay(10);
+    byte buff[8];
+    byte size = 8;
+    unsigned long id;
+
+    do{
+        uint8_t id_stmp[8] = {(uint8_t)this->right_motor_id, 0, 0, 0, 0, 0, 0, 0};
+        CAN0.sendMsgBuf(0x108, 0, 8, id_stmp);
+        delay(10);
+        CAN0.readMsgBuf(&id, &size, buff);
+    }while(id != (this->right_motor_id + 0x96) && buff[0] != this->right_motor_id);
 }
 
 void motor_drive::set_leftwheel_id(){
-    uint8_t id_stmp[8] = {(uint8_t)this->left_motor_id, 0, 0, 0, 0, 0, 0, 0};
-    CAN0.sendMsgBuf(0x108, 0, 8, id_stmp);
-    delay(10);
+    byte buff[8];
+    byte size = 8;
+    unsigned long id;
+
+    do{
+        uint8_t id_stmp[8] = {(uint8_t)this->left_motor_id, 0, 0, 0, 0, 0, 0, 0};
+        CAN0.sendMsgBuf(0x108, 0, 8, id_stmp);
+        delay(10);
+        CAN0.readMsgBuf(&id, &size, buff);
+    }while(id != (this->left_motor_id + 0x96) && buff[0] != this->left_motor_id);
 }
 
 feedback_t motor_drive::get_right_wheel_feedback(){
