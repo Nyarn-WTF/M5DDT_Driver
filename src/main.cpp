@@ -1,22 +1,51 @@
 #include <Arduino.h>
 #include <M5Stack.h>
+#include <micro_ros_platformio.h>
+#include <stdio.h>
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <geometry_msgs/msg/twist.h>
+
 #include "motor_drive.h"
 #include "m5_logo.h"
 #include "Patlite.h"
-#include "ros2_node.h"
 
 motor_drive *motor;
 Patlite *patlite;
+
+rcl_subscription_t subscriber;
+rcl_publisher_t publisher;
+geometry_msgs__msg__Twist cmd_vel_msg, odom_msg;
+rclc_executor_t executor;
+rcl_allocator_t allocator;
+rclc_support_t support;
+rcl_node_t node;
+rcl_timer_t timer;
 
 float dt = 0.01;
 float Kp = 20.0;
 float Ki = 1.0;
 float Kd = 0.2;
 
+float wheel_phi = 0.20;
+float wheel_tread = 0.40;
+
 int16_t pid_calc(int16_t befor_value, int16_t feedback_rpm, int16_t target_rpm, int16_t error[2]);
 void motor_control(void * pvParameters);
+void ros2_setup();
 
 SET_LOOP_TASK_STACK_SIZE(64000);
+
+#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
+
+void error_loop(){
+  while(1){
+    delay(100);
+  }
+}
 
 void setup() {
     M5.begin();
@@ -55,10 +84,13 @@ void setup() {
         M5.Power.reset();
     }
 
-    xTaskCreate(motor_control,  "motor control", 8192, nullptr, 1, nullptr);
+    ros2_setup();
+
+    xTaskCreate(motor_control,  "motor control", 8192 * 2, nullptr, 1, nullptr);
 }
 
 void loop() {
+    RCCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
     M5.update();
     delay(1);
 }
@@ -69,15 +101,20 @@ void motor_control(void * pvParameters){
     int16_t left_err[2] = {0}, right_err[2] = {0};
     
     while(true){
-        if(!motor->get_timeout()){
-            feedback_t left_feedback, right_feedback;
+        feedback_t left_feedback, right_feedback;
 
+        if(!motor->get_timeout()){
             left_feedback = motor->get_left_wheel_feedback();
             right_feedback = motor->get_right_wheel_feedback();
 
             if(average_count >= 10){
-                left_velo = pid_calc(left_velo, left_feedback.velocity, 60, left_err);
-                right_velo = pid_calc(right_velo, right_feedback.velocity, -60, right_err);
+                float vl = cmd_vel_msg.linear.x - pow(wheel_tread, -1) * cmd_vel_msg.angular.z;
+                float vr = 2 * cmd_vel_msg.linear.x - vl;
+                int16_t target_vl = vl * 60 / wheel_phi / PI;
+                int16_t target_vr = vr * 60 / wheel_phi / PI;
+
+                left_velo = pid_calc(left_velo, left_velo_ave, target_vl, left_err);
+                right_velo = pid_calc(right_velo, right_velo_ave, target_vr, right_err);
                 Serial.printf("%d, %d, %d, %d\r\n", left_feedback.velocity, right_feedback.velocity, left_velo, right_velo);
                 average_count = 0;
             }else{
@@ -129,4 +166,66 @@ int16_t pid_calc(int16_t befor_value, int16_t feedback_rpm, int16_t target_rpm, 
         rtn = INT16_MIN + 1;
 
     return (int16_t)rtn;
+}
+
+//ROS2
+
+//twist message cb
+void subscription_callback(const void *msgin) {
+    memcpy(&cmd_vel_msg, (geometry_msgs__msg__Twist*)msgin, sizeof(geometry_msgs__msg__Twist));
+}
+
+void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
+{  
+  RCLC_UNUSED(last_call_time);
+  if (timer != NULL) {
+    if(!motor->get_timeout()){
+        float vr = motor->get_right_wheel_feedback().velocity / 60 * wheel_phi * PI;
+        float vl = motor->get_left_wheel_feedback().velocity / 60 * wheel_phi * PI;
+        odom_msg.linear.x = (vr + vl) / 2;
+        odom_msg.angular.z = (vr - vl) / (2 * wheel_tread);
+        RCSOFTCHECK(rcl_publish(&publisher, &odom_msg, NULL));
+    }
+  }
+}
+
+void ros2_setup(){
+    set_microros_serial_transports(Serial1);
+    
+    delay(2000);
+
+    allocator = rcl_get_default_allocator();
+
+    //create init_options
+    RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+
+    // create node
+    RCCHECK(rclc_node_init_default(&node, "m5stack", "", &support));
+
+    // create subscriber
+    RCCHECK(rclc_subscription_init_default(
+        &subscriber,
+        &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
+        "cmd_vel"));
+
+    // create publisher
+    RCCHECK(rclc_publisher_init_default(
+        &publisher,
+        &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
+        "odom"));
+
+    // create timer,
+    const unsigned int timer_timeout = 1000;
+    RCCHECK(rclc_timer_init_default(
+        &timer,
+        &support,
+        RCL_MS_TO_NS(timer_timeout),
+        timer_callback));
+
+    // create executor
+    RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+    RCCHECK(rclc_executor_add_timer(&executor, &timer));
+    RCCHECK(rclc_executor_add_subscription(&executor, &subscriber, &cmd_vel_msg, &subscription_callback, ON_NEW_DATA));
 }
