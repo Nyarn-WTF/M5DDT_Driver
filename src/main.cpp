@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <M5Stack.h>
+#include <Adafruit_NeoPixel.h>
 #include <micro_ros_platformio.h>
 #include <stdio.h>
 #include <rcl/rcl.h>
@@ -29,8 +30,8 @@ float Kp = 20.0;
 float Ki = 1.0;
 float Kd = 0.2;
 
-float wheel_phi = 0.20;
-float wheel_tread = 0.40;
+double wheel_phi = 0.20;
+double wheel_tread = 0.40;
 
 int16_t pid_calc(int16_t befor_value, int16_t feedback_rpm, int16_t target_rpm, int16_t error[2]);
 void motor_control(void * pvParameters);
@@ -41,8 +42,20 @@ SET_LOOP_TASK_STACK_SIZE(64000);
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
 
+#define M5STACK_FIRE_NEO_NUM_LEDS 10
+#define M5STACK_FIRE_NEO_DATA_PIN 15
+
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(M5STACK_FIRE_NEO_NUM_LEDS, M5STACK_FIRE_NEO_DATA_PIN, NEO_GRB + NEO_KHZ800);
+
 void error_loop(){
   while(1){
+    int r = 255;
+    int g = 0;
+    int b = 0;
+    for(int i = 0; i < 9; i++){
+        pixels.setPixelColor(i, pixels.Color(r, g, b));   
+    }  
+    pixels.show();
     delay(100);
   }
 }
@@ -50,14 +63,23 @@ void error_loop(){
 void setup() {
     M5.begin();
     M5.Power.begin();
-    Serial.begin(9600);
+    Serial.begin(2000000);
     Serial.println("setup start");
+
+    int r = 0;
+    int g = 0;
+    int b = 0;
+    for(int i = 0; i < 9; i++){
+        pixels.setPixelColor(i, pixels.Color(r, g, b));   
+    }  
+    pixels.show();
+
+    delay(1000);
 
     Serial2.begin(9600, SERIAL_8N1, 16, 17);
 
     M5.Lcd.pushImage(0, 0, 320, 240, (uint16_t *)gImage_logoM5);
     delay(500);
-    M5.Lcd.setTextColor(BLACK);
 
     M5.Lcd.setTextSize(3);
     M5.Lcd.setTextColor(0xFFFF,0x0000);
@@ -86,12 +108,27 @@ void setup() {
 
     ros2_setup();
 
-    xTaskCreate(motor_control,  "motor control", 8192 * 2, nullptr, 1, nullptr);
+    xTaskCreatePinnedToCore(motor_control,  "motor control", 32000, nullptr, 1, nullptr, 0);
 }
 
 void loop() {
-    RCCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
+
     M5.update();
+
+    if(!motor->get_timeout()){
+        double vr = (double)motor->get_right_wheel_feedback().velocity / 60 * wheel_phi * PI;
+        double vl = (double)motor->get_left_wheel_feedback().velocity / 60 * wheel_phi * PI;
+        double x = (vr + vl) / 2;
+        double z = (vr - vl) / (2 * wheel_tread);
+        odom_msg.linear.x = x;
+        odom_msg.angular.z = z;
+        RCSOFTCHECK(rcl_publish(&publisher, &odom_msg, NULL));
+        M5.Lcd.clear(BLACK);
+        M5.Lcd.setCursor(10, 10);
+        M5.Lcd.printf("Twixt\nLX: %lf\nAZ: %lf\n", cmd_vel_msg.linear.x, cmd_vel_msg.angular.z);
+        M5.Lcd.printf("Odom \nLX: %lf\nAZ: %lf\n", x, z);
+    }
+    RCCHECK(rclc_executor_spin_one_period(&executor, 0));
     delay(1);
 }
 
@@ -175,22 +212,8 @@ void subscription_callback(const void *msgin) {
     memcpy(&cmd_vel_msg, (geometry_msgs__msg__Twist*)msgin, sizeof(geometry_msgs__msg__Twist));
 }
 
-void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
-{  
-  RCLC_UNUSED(last_call_time);
-  if (timer != NULL) {
-    if(!motor->get_timeout()){
-        float vr = motor->get_right_wheel_feedback().velocity / 60 * wheel_phi * PI;
-        float vl = motor->get_left_wheel_feedback().velocity / 60 * wheel_phi * PI;
-        odom_msg.linear.x = (vr + vl) / 2;
-        odom_msg.angular.z = (vr - vl) / (2 * wheel_tread);
-        RCSOFTCHECK(rcl_publish(&publisher, &odom_msg, NULL));
-    }
-  }
-}
-
 void ros2_setup(){
-    set_microros_serial_transports(Serial1);
+    set_microros_serial_transports(Serial);
     
     delay(2000);
 
@@ -202,30 +225,21 @@ void ros2_setup(){
     // create node
     RCCHECK(rclc_node_init_default(&node, "m5stack", "", &support));
 
-    // create subscriber
+    // // create subscriber
     RCCHECK(rclc_subscription_init_default(
         &subscriber,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
-        "cmd_vel"));
+        "/cmd_vel"));
 
     // create publisher
     RCCHECK(rclc_publisher_init_default(
         &publisher,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
-        "odom"));
-
-    // create timer,
-    const unsigned int timer_timeout = 1000;
-    RCCHECK(rclc_timer_init_default(
-        &timer,
-        &support,
-        RCL_MS_TO_NS(timer_timeout),
-        timer_callback));
+        "/odom"));
 
     // create executor
     RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
-    RCCHECK(rclc_executor_add_timer(&executor, &timer));
     RCCHECK(rclc_executor_add_subscription(&executor, &subscriber, &cmd_vel_msg, &subscription_callback, ON_NEW_DATA));
 }
