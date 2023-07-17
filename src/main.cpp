@@ -31,7 +31,7 @@ float Ki = 1.0;
 float Kd = 0.2;
 
 double wheel_phi = 0.20;
-double wheel_tread = 0.40;
+double wheel_tread = 0.20;
 
 int16_t pid_calc(int16_t befor_value, int16_t feedback_rpm, int16_t target_rpm, int16_t error[2]);
 void motor_control(void * pvParameters);
@@ -116,7 +116,7 @@ void loop() {
     M5.update();
 
     if(!motor->get_timeout()){
-        double vr = (double)motor->get_right_wheel_feedback().velocity / 60 * wheel_phi * PI;
+        double vr = -(double)motor->get_right_wheel_feedback().velocity / 60 * wheel_phi * PI;
         double vl = (double)motor->get_left_wheel_feedback().velocity / 60 * wheel_phi * PI;
         double x = (vr + vl) / 2;
         double z = (vr - vl) / (2 * wheel_tread);
@@ -127,8 +127,11 @@ void loop() {
         M5.Lcd.setCursor(10, 10);
         M5.Lcd.printf("Twixt\nLX: %lf\nAZ: %lf\n", cmd_vel_msg.linear.x, cmd_vel_msg.angular.z);
         M5.Lcd.printf("Odom \nLX: %lf\nAZ: %lf\n", x, z);
+    }else{
+        odom_msg.linear.x = 0;
+        odom_msg.angular.z = 0;
     }
-    RCCHECK(rclc_executor_spin_one_period(&executor, 0));
+    RCCHECK(rclc_executor_spin_one_period(&executor, 1));
     delay(1);
 }
 
@@ -145,13 +148,13 @@ void motor_control(void * pvParameters){
             right_feedback = motor->get_right_wheel_feedback();
 
             if(average_count >= 10){
-                float vl = cmd_vel_msg.linear.x - pow(wheel_tread, -1) * cmd_vel_msg.angular.z;
-                float vr = 2 * cmd_vel_msg.linear.x - vl;
+                float vl = cmd_vel_msg.linear.x - cmd_vel_msg.angular.z * wheel_tread;
+                float vr = cmd_vel_msg.linear.x + cmd_vel_msg.angular.z * wheel_tread;
                 int16_t target_vl = vl * 60 / wheel_phi / PI;
                 int16_t target_vr = vr * 60 / wheel_phi / PI;
 
                 left_velo = pid_calc(left_velo, left_velo_ave, target_vl, left_err);
-                right_velo = pid_calc(right_velo, right_velo_ave, target_vr, right_err);
+                right_velo = pid_calc(right_velo, right_velo_ave, -target_vr, right_err);
                 Serial.printf("%d, %d, %d, %d\r\n", left_feedback.velocity, right_feedback.velocity, left_velo, right_velo);
                 average_count = 0;
             }else{
